@@ -136,9 +136,6 @@ jobs:
           rm -rf data/cleaned/taxi_cleaned_tv2.parquet
           find data/processed/demand_hourly.parquet -name "*.crc" -type f -delete
 
-          git fetch origin feature/tv2-eda-demand
-          git rebase origin/feature/tv2-eda-demand
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -151,5 +148,6 @@ jobs:
             echo "No generated output changes to commit."
           else
             git commit -m "data(tv2): add verified EDA charts and demand grid [skip ci]"
+            git pull --rebase origin feature/tv2-eda-demand
             git push origin HEAD:feature/tv2-eda-demand
           fi
