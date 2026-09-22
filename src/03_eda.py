@@ -28,7 +28,7 @@ def build_spark(app_name: str) -> SparkSession:
         .master(os.environ.get("SPARK_MASTER", "local[4]"))
         .config("spark.driver.memory", os.environ.get("SPARK_DRIVER_MEMORY", "4g"))
         .config("spark.sql.shuffle.partitions", os.environ.get("SPARK_SHUFFLE_PARTITIONS", "32"))
-        .config("spark.sql.session.timeZone", "America/New_York")
+        .config("spark.sql.session.timeZone", "UTC")
         .getOrCreate()
     )
 
