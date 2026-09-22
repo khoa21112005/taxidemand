@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Large/raw datasets stay local.
+*.parquet
+
+# Generated datasets and reports stay local; keep the folder structure.
+data/cleaned/*
+!data/cleaned/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+output/*
+!output/.gitkeep
+
