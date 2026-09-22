@@ -12,7 +12,7 @@ Branch: `feature/tv2-eda-demand`
   - dữ liệu trip-level được xử lý bằng Spark; chỉ các bảng aggregate nhỏ mới chuyển sang pandas để vẽ.
 - `src/04_aggregate_demand.py`
   - group theo `zone_id × pickup_hour`;
-  - tạo đủ 17.544 giờ local-wall-clock từ 2023-01-01 00:00 đến 2024-12-31 23:00;
+  - tạo đủ 17.544 giờ wall-clock từ 2023-01-01 00:00 đến 2024-12-31 23:00;
   - dùng toàn bộ zone_id 1–265;
   - cross join thành grid đầy đủ rồi fill `demand = 0`;
   - đọc lại Parquet bằng Spark và kiểm tra row count, min/max, số zone, số giờ, duplicate pair, missing pair và null demand.
@@ -54,3 +54,8 @@ python src\04_aggregate_demand.py --input data\cleaned\taxi_cleaned.parquet
 Workflow `.github/workflows/tv2-build.yml` tải 24 file NYC TLC Yellow Taxi chính thức, tạo cleaned tối giản cho TV2, chạy EDA và Demand Grid, sau đó commit các output đã sinh về branch này.
 
 `src/02b_prepare_tv2_minimal.py` chỉ phục vụ CI/reproducibility khi không có sẵn full cleaned dataset. Pipeline chính vẫn dùng contract `pickup_datetime, zone_id` do bước cleaning bàn giao.
+
+
+## Ghi chú timestamp
+
+Các timestamp TLC được xử lý như giờ wall-clock, không áp dụng quy đổi DST khi dựng lưới giờ. Spark session dùng `UTC` để bảo toàn đúng 17.544 nhãn giờ từ `2023-01-01 00:00:00` đến `2024-12-31 23:00:00`; điều này tránh giờ bị trùng/mất tại các mốc DST.
