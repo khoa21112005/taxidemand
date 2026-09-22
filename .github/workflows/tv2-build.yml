@@ -1,5 +1,9 @@
 name: TV2 build EDA and demand grid
 
+concurrency:
+  group: tv2-build-feature
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -130,6 +134,10 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf data/cleaned/taxi_cleaned_tv2.parquet
+          find data/processed/demand_hourly.parquet -name "*.crc" -type f -delete
+
+          git fetch origin feature/tv2-eda-demand
+          git rebase origin/feature/tv2-eda-demand
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
