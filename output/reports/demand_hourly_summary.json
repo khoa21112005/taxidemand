@@ -1,0 +1,16 @@
+{
+  "input": "/home/runner/work/taxidemand/taxidemand/data/cleaned/taxi_cleaned_tv2.parquet",
+  "output": "/home/runner/work/taxidemand/taxidemand/data/processed/demand_hourly.parquet",
+  "valid_trip_count": 78474467,
+  "row_count": 4649160,
+  "expected_row_count": 4649160,
+  "min_pickup_hour": "2023-01-01 00:00:00",
+  "max_pickup_hour": "2024-12-31 23:00:00",
+  "zone_count": 265,
+  "hour_count": 17544,
+  "zero_demand_rows": 2701095,
+  "null_demand_rows": 0,
+  "duplicate_pairs": 0,
+  "missing_pairs": 0,
+  "completeness_check": "PASS"
+}
