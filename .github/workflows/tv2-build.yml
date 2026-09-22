@@ -1,0 +1,153 @@
+name: TV2 build EDA and demand grid
+
+concurrency:
+  group: tv2-build-feature
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - feature/tv2-eda-demand
+    paths:
+      - "src/02b_prepare_tv2_minimal.py"
+      - "src/03_eda.py"
+      - "src/04_aggregate_demand.py"
+      - ".github/workflows/tv2-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tv2:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      SPARK_MASTER: local[4]
+      SPARK_DRIVER_MEMORY: 5g
+      SPARK_SHUFFLE_PARTITIONS: "64"
+      MPLBACKEND: Agg
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/tv2-eda-demand
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download official NYC TLC Yellow Taxi 2023-2024 data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/raw/2023 data/raw/2024
+          urls_file="$(mktemp)"
+          for year in 2023 2024; do
+            for month in $(seq -w 1 12); do
+              echo "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_${year}-${month}.parquet data/raw/${year}/yellow_tripdata_${year}-${month}.parquet" >> "$urls_file"
+            done
+          done
+
+          cat "$urls_file" | xargs -n 2 -P 4 bash -c '
+            url="$0"
+            target="$1"
+            echo "Downloading $url"
+            curl --fail --location --retry 5 --retry-delay 3 --output "$target" "$url"
+          '
+
+          curl --fail --location --retry 5 --retry-delay 3             --output data/raw/taxi_zone_lookup.csv             https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv
+
+          echo "Downloaded Parquet files:"
+          find data/raw -name "*.parquet" -type f | sort
+          test "$(find data/raw -name '*.parquet' -type f | wc -l)" -eq 24
+          du -sh data/raw
+
+      - name: Prepare compact cleaned TV2 dataset with Spark
+        run: |
+          python src/02b_prepare_tv2_minimal.py             --data-dir data/raw             --output data/cleaned/taxi_cleaned_tv2.parquet
+
+      - name: Free raw trip data disk space
+        shell: bash
+        run: |
+          find data/raw/2023 data/raw/2024 -name "*.parquet" -type f -delete
+          du -sh data/cleaned/taxi_cleaned_tv2.parquet
+
+      - name: Run EDA and generate required charts
+        run: |
+          python src/03_eda.py             --input data/cleaned/taxi_cleaned_tv2.parquet             --zone-lookup data/raw/taxi_zone_lookup.csv             --charts-dir output/charts             --tables-dir output/eda_tables             --top-n 15
+
+      - name: Build complete hourly demand grid
+        run: |
+          python src/04_aggregate_demand.py             --input data/cleaned/taxi_cleaned_tv2.parquet             --output data/processed/demand_hourly.parquet             --report output/reports/demand_hourly_summary.json
+
+      - name: Verify required deliverables
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s output/charts/01_hourly_demand_24h.png
+          test -s output/charts/02_weekday_vs_weekend.png
+          test -s output/charts/03_top_zones.png
+          test -s output/reports/demand_hourly_summary.json
+          test -d data/processed/demand_hourly.parquet
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("output/reports/demand_hourly_summary.json").read_text())
+          assert report["row_count"] == 4_649_160, report
+          assert report["expected_row_count"] == 4_649_160, report
+          assert report["zone_count"] == 265, report
+          assert report["hour_count"] == 17_544, report
+          assert report["min_pickup_hour"] == "2023-01-01 00:00:00", report
+          assert report["max_pickup_hour"] == "2024-12-31 23:00:00", report
+          assert report["missing_pairs"] == 0, report
+          assert report["duplicate_pairs"] == 0, report
+          assert report["null_demand_rows"] == 0, report
+          assert report["completeness_check"] == "PASS", report
+          print(json.dumps(report, indent=2))
+          PY
+
+          echo "Output sizes:"
+          du -sh output/charts output/eda_tables output/reports data/processed/demand_hourly.parquet
+
+      - name: Commit generated charts, tables, report and Parquet
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf data/cleaned/taxi_cleaned_tv2.parquet
+          find data/processed/demand_hourly.parquet -name "*.crc" -type f -delete
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f output/charts/*.png
+          git add -f output/eda_tables/*.csv
+          git add -f output/reports/demand_hourly_summary.json
+          git add -f data/processed/demand_hourly.parquet
+
+          if git diff --cached --quiet; then
+            echo "No generated output changes to commit."
+          else
+            git commit -m "data(tv2): add verified EDA charts and demand grid [skip ci]"
+            git pull --rebase origin feature/tv2-eda-demand
+            git push origin HEAD:feature/tv2-eda-demand
+          fi
